@@ -83,6 +83,12 @@ public interface ConnectionConfig {
   long getHttpConnectionTimeout();
   /** @see BuiltInConnectionProperty#HTTP_RESPONSE_TIMEOUT **/
   long getHttpResponseTimeout();
+  /** @see BuiltInConnectionProperty#BEARER_TOKEN */
+  String bearerToken();
+  /** @see BuiltInConnectionProperty#TOKEN_PROVIDER_CLASS */
+  String bearerTokenProviderClass();
+
+  ConnectionPropertyValue customPropertyValue(ConnectionProperty property);
 }
 
 // End ConnectionConfig.java
