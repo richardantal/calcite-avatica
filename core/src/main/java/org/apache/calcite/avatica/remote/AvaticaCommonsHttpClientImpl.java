@@ -22,6 +22,7 @@ import org.apache.hc.client5.http.ClientProtocolException;
 import org.apache.hc.client5.http.SystemDefaultDnsResolver;
 import org.apache.hc.client5.http.auth.AuthSchemeFactory;
 import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.BearerToken;
 import org.apache.hc.client5.http.auth.Credentials;
 import org.apache.hc.client5.http.auth.CredentialsProvider;
 import org.apache.hc.client5.http.auth.KerberosConfig;
@@ -33,6 +34,7 @@ import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.auth.BasicAuthCache;
 import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.auth.BasicSchemeFactory;
+import org.apache.hc.client5.http.impl.auth.BearerSchemeFactory;
 import org.apache.hc.client5.http.impl.auth.DigestSchemeFactory;
 import org.apache.hc.client5.http.impl.auth.SPNegoSchemeFactory;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -61,6 +63,8 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -70,7 +74,7 @@ import java.util.concurrent.TimeUnit;
  * sent and received across the wire.
  */
 public class AvaticaCommonsHttpClientImpl implements AvaticaHttpClient, HttpClientPoolConfigurable,
-    UsernamePasswordAuthenticateable, GSSAuthenticateable {
+    UsernamePasswordAuthenticateable, GSSAuthenticateable, BearerAuthenticateable {
   private static final Logger LOG = LoggerFactory.getLogger(AvaticaCommonsHttpClientImpl.class);
 
   // SPNEGO specific settings
@@ -96,6 +100,10 @@ public class AvaticaCommonsHttpClientImpl implements AvaticaHttpClient, HttpClie
   protected HttpClientContext context;
   protected long connectTimeout;
   protected long responseTimeout;
+  private static final List<String> AVATICA_SCHEME_PRIORITY =
+      Collections.unmodifiableList(Arrays.asList(StandardAuthScheme.BASIC,
+          StandardAuthScheme.DIGEST, StandardAuthScheme.SPNEGO, StandardAuthScheme.NTLM,
+          StandardAuthScheme.KERBEROS, StandardAuthScheme.BEARER));
 
   public AvaticaCommonsHttpClientImpl(URL url) {
     this.uri = toURI(Objects.requireNonNull(url));
@@ -128,10 +136,16 @@ public class AvaticaCommonsHttpClientImpl implements AvaticaHttpClient, HttpClie
 
   // This is needed because we initialize the client object too early.
   private RequestConfig createRequestConfig() {
+
+
+
+
+
     RequestConfig.Builder requestConfigBuilder = RequestConfig.custom();
     requestConfigBuilder
         .setConnectTimeout(this.connectTimeout, TimeUnit.MILLISECONDS)
         .setResponseTimeout(this.responseTimeout, TimeUnit.MILLISECONDS);
+//        .setTargetPreferredAuthSchemes(AVATICA_SCHEME_PRIORITY);
     List<String> preferredSchemes = new ArrayList<>();
     // In HttpClient 5.3+ SPNEGO is not enabled by default
     if (authRegistry != null) {
@@ -143,6 +157,12 @@ public class AvaticaCommonsHttpClientImpl implements AvaticaHttpClient, HttpClie
       }
       if (authRegistry.lookup(StandardAuthScheme.SPNEGO) != null) {
         preferredSchemes.add(StandardAuthScheme.SPNEGO);
+      }
+      if (authRegistry.lookup(StandardAuthScheme.KERBEROS) != null) {
+        preferredSchemes.add(StandardAuthScheme.KERBEROS);
+      }
+      if (authRegistry.lookup(StandardAuthScheme.BEARER) != null) {
+        preferredSchemes.add(StandardAuthScheme.BEARER);
       }
       requestConfigBuilder.setTargetPreferredAuthSchemes(preferredSchemes);
       requestConfigBuilder.setProxyPreferredAuthSchemes(preferredSchemes);
@@ -237,6 +257,19 @@ public class AvaticaCommonsHttpClientImpl implements AvaticaHttpClient, HttpClie
     context.setCredentialsProvider(credentialsProvider);
     context.setAuthSchemeRegistry(authRegistry);
     context.setRequestConfig(createRequestConfig());
+  }
+
+  @Override public void setToken(String username, String token) {
+    this.credentialsProvider = new BasicCredentialsProvider();
+    ((BasicCredentialsProvider) this.credentialsProvider)
+//        .setCredentials(anyAuthScope, new BearerCredentials(username, tokenProvider));
+        .setCredentials(anyAuthScope, new BearerToken(token));
+
+
+    this.authRegistry = RegistryBuilder.<AuthSchemeFactory>create()
+        .register(StandardAuthScheme.BEARER,
+            new BearerSchemeFactory())
+        .build();
   }
 
   /**
